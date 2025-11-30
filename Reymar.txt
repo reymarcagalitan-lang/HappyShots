@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Preview & Capture — PhotoBooth (Christmas Minimal)</title>
+<style>
+  :root{
+    --bg:#fbfbfb; --card:#fff; --accent:#b81e2e; --green:#1b6b47; --muted:#666;
+    --radius:12px; --shadow:0 8px 30px rgba(10,10,20,0.06);
+  }
+  *{box-sizing:border-box}
+  body{font-family:Inter,system-ui,Arial; margin:0; background:linear-gradient(#fff,#fbfbfb); color:#222; padding:18px; display:flex; justify-content:center;}
+  .wrap{width:100%;max-width:1100px; display:grid; grid-template-columns:1fr 340px; gap:18px; align-items:start;}
+  @media (max-width:980px){.wrap{grid-template-columns:1fr;}.right{order:2}}
+  .card{background:var(--card); border-radius:var(--radius); padding:14px; box-shadow:var(--shadow)}
+  header{display:flex; gap:12px; align-items:center; margin-bottom:10px}
+  .logo{width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#ff6b6b);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700}
+  h1{font-size:18px;margin:0}
+  p.lead{margin:0;color:var(--muted);font-size:13px}
+  .preview-area{display:flex;flex-direction:column;gap:10px;align-items:center}
+  video{width:100%;max-width:820px;border-radius:12px;background:#000}
+  canvas{display:none}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  button{padding:10px 12px;border-radius:10px;border:0;cursor:pointer;font-weight:600}
+  .btn-primary{background:var(--accent);color:#fff}
+  .btn-ghost{background:transparent;border:1px solid #eee}
+  .templates{display:flex;gap:10px;overflow:auto;padding:8px}
+  .tpl{min-width:110px;border-radius:8px;overflow:hidden;border:2px solid transparent;cursor:pointer}
+  .tpl img{width:110px;height:140px;object-fit:cover;display:block}
+  .tpl.sel{border-color:var(--accent)}
+  .small{font-size:13px;color:var(--muted)}
+  .preview-final{width:100%;max-width:460px;border-radius:10px;border:1px solid #f0f0f0}
+  .controls-row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+  .stickers{display:flex;gap:8px;flex-wrap:wrap}
+  .sticker{cursor:pointer;border-radius:8px;padding:6px;border:1px solid transparent}
+  .sticker.sel{border-color:#ddd}
+  .qr-wrap{display:flex;gap:8px;align-items:center}
+  .thumb{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #eee}
+  .position-hint{font-size:12px;color:#888}
+  /* draggable sticker outline */
+  .dragging{opacity:0.85; transform:scale(1.02);}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- LEFT: camera + template selection -->
+    <div>
+      <header>
+        <div class="logo">PB</div>
+        <div>
+          <h1>Preview & Capture</h1>
+          <p class="lead">Pick a frame → choose a sticker → capture → preview & export</p>
+        </div>
+      </header>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div class="small">Frames</div>
+          <div class="small">Tip: allow camera access • Use landscape phones for best results</div>
+        </div>
+
+        <div class="templates" id="templates">
+          <!-- thumbnails injected by JS -->
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="preview-area">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="canvas" width="1200" height="1600"></canvas>
+
+          <div class="controls-row" style="width:100%;margin-top:10px">
+            <div style="display:flex;gap:8px;align-items:center">
+              <button id="captureBtn" class="btn-primary">Capture</button>
+              <button id="newBtn" class="btn-ghost">New Photo</button>
+              <button id="switchBtn" class="btn-ghost">Switch Camera</button>
+            </div>
+
+            <div style="display:flex;gap:8px;align-items:center">
+              <label class="small">Frame color</label>
+              <input id="frameColor" type="color" value="#b81e2e" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="height:12px"></div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><strong>Stickers</strong><div class="small">click to add, then drag to place</div></div>
+          <div class="position-hint">Tap & drag sticker on preview</div>
+        </div>
+        <div style="height:10px"></div>
+        <div class="stickers" id="stickers">
+          <!-- small emoji / icons -->
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: preview & actions -->
+    <div class="right">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><strong>Preview</strong><div class="small">Final merged image</div></div>
+          <div class="small" id="status">Idle</div>
+        </div>
+
+        <div style="margin-top:8px;display:flex;flex-direction:column;align-items:center;gap:8px">
+          <img id="previewImg" class="preview-final" alt="final preview" />
+          <div style="display:flex;gap:8px">
+            <button id="downloadBtn" class="btn-primary">Download</button>
+            <button id="copyBtn" class="btn-ghost">Copy Link</button>
+            <button id="qrBtn" class="btn-ghost">QR Code</button>
+            <button id="printBtn" class="btn-ghost">Print</button>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div id="qrArea" style="display:none;margin-top:8px;text-align:center">
+          <div class="small">Scan to open image</div>
+          <img id="qrImg" style="width:180px;height:180px;border:1px solid #eee;margin-top:8px" alt="qr"/>
+        </div>
+
+      </div>
+
+      <div style="height:12px"></div>
+
+      <div class="card">
+        <strong>Actions & Notes</strong>
+        <ol style="margin:8px 0 0 18px;padding:0" class="small">
+          <li>Place your chosen frame images in the same folder as this file (names: frame1.png, frame2.png...)</li>
+          <li>Open the HTML in Chrome/Edge/Firefox (https recommended). Allow camera access.</li>
+          <li>QR generation encodes the image data URL — it works for many scanners; if QR is too long we can add server upload to produce short links.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ========== Configuration ========== */
+const FRAME_FILES = ['frame1.png','frame2.png','frame3.png']; // put your frames with these names
+const STICKERS = ['🎄','❄️','⭐','🎁','🦌','☃️','✨'];
+
+/* ========== Elements ========== */
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const templatesEl = document.getElementById('templates');
+const stickersEl = document.getElementById('stickers');
+const previewImg = document.getElementById('previewImg');
+const captureBtn = document.getElementById('captureBtn');
+const newBtn = document.getElementById('newBtn');
+const switchBtn = document.getElementById('switchBtn');
+const frameColorInput = document.getElementById('frameColor');
+const downloadBtn = document.getElementById('downloadBtn');
+const copyBtn = document.getElementById('copyBtn');
+const qrBtn = document.getElementById('qrBtn');
+const printBtn = document.getElementById('printBtn');
+const qrArea = document.getElementById('qrArea');
+const qrImg = document.getElementById('qrImg');
+const statusEl = document.getElementById('status');
+
+let selectedFrame = FRAME_FILES[0];
+let currentStream = null;
+let usingFront = false;
+let activeStickers = []; // {emoji,x,y,size,id}
+let dragging = null;
+
+/* ========== Render templates thumbnails ========== */
+FRAME_FILES.forEach((f, idx)=>{
+  const d = document.createElement('div'); d.className='tpl' + (idx===0?' sel':'');
+  d.innerHTML = `<img src="${f}" alt="frame ${idx+1}">`;
+  d.addEventListener('click', ()=>{ document.querySelectorAll('.tpl').forEach(x=>x.classList.remove('sel')); d.classList.add('sel'); selectedFrame=f; });
+  templatesEl.appendChild(d);
+});
+
+/* ========== Render stickers ========== */
+STICKERS.forEach((s, i)=>{
+  const b = document.createElement('div'); b.className='sticker'; b.innerText=s;
+  b.addEventListener('click', ()=>{ addSticker(s); });
+  stickersEl.appendChild(b);
+});
+
+/* ========== Camera helpers ========== */
+async function startCamera(){
+  stopCamera();
+  try{
+    const constraints = { video: { facingMode: usingFront? 'user':'environment', width:{ideal:1280}, height:{ideal:960} }, audio:false };
+    const s = await navigator.mediaDevices.getUserMedia(constraints);
+    currentStream = s;
+    video.srcObject = s;
+    status('Camera ready');
+  }catch(e){ alert('Cannot access camera. Use HTTPS and allow camera permission.'); console.error(e); status('Camera error');}
+}
+function stopCamera(){ if(currentStream){ currentStream.getTracks().forEach(t=>t.stop()); currentStream=null; video.srcObject=null; status('Camera stopped'); } }
+
+/* ========== Capture and merge ========== */
+captureBtn.addEventListener('click', ()=>{ capture(); });
+newBtn.addEventListener('click', ()=>{ // reset preview & keep camera running
+  previewImg.src=''; qrArea.style.display='none'; status('Ready for capture'); activeStickers=[]; renderEditorOverlay();
+});
+switchBtn.addEventListener('click', ()=>{ usingFront=!usingFront; startCamera(); });
+
+async function capture(){
+  if(!currentStream){ alert('Camera not started'); return; }
+  // wait for video to have dimensions
+  if(!video.videoWidth || !video.videoHeight){ await new Promise(r=>setTimeout(r,200)); }
+  // draw template as base
+  const template = await loadImage(selectedFrame);
+  // set canvas size to template size (or fallback)
+  const cw = template.width || 1200;
+  const ch = template.height || 1600;
+  canvas.width = cw; canvas.height = ch;
+  // paint template
+  ctx.clearRect(0,0,cw,ch);
+  ctx.drawImage(template,0,0,cw,ch);
+  // determine photo box area (centered)
+  const boxW = cw * 0.72;
+  const videoRatio = (video.videoWidth||4)/(video.videoHeight||3);
+  const boxH = boxW / videoRatio;
+  const boxX = (cw - boxW)/2;
+  const boxY = ch * 0.16;
+  // draw video snapshot
+  // optional rounded clip (for nicer look)
+  ctx.save();
+  roundRect(ctx, boxX, boxY, boxW, boxH, 20);
+  ctx.clip();
+  // Draw video frame: drawImage(video, sx, sy, sw, sh, dx, dy, dw, dh)
+  // We'll simply draw whole video scaled to box
+  ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight, boxX, boxY, boxW, boxH);
+  ctx.restore();
+  // apply frame color overlay (multiply a small band or accent)
+  const color = frameColorInput.value || '#b81e2e';
+  // Example: draw a semi-opaque color rectangle at bottom 10% if you want accent
+  ctx.fillStyle = hexToRgba(color, 0.08);
+  ctx.fillRect(0, ch - ch*0.12, cw, ch*0.12);
+  // draw stickers (their x,y are relative to canvas)
+  activeStickers.forEach(st=>{
+    ctx.save();
+    ctx.font = `${st.size}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(st.emoji, st.x * cw, st.y * ch);
+    ctx.restore();
+  });
+  // finalize
+  const dataUrl = canvas.toDataURL('image/png');
+  previewImg.src = dataUrl;
+  status('Captured');
+  // attach download/copy/print handlers
+  downloadBtn.onclick = ()=>downloadDataUrl(dataUrl);
+  copyBtn.onclick = ()=>copyToClipboard(dataUrl);
+  printBtn.onclick = ()=>printDataUrl(dataUrl);
+  qrBtn.onclick = ()=>generateQR(dataUrl);
+}
+
+/* ========== Utility helpers ========== */
+function loadImage(src){ return new Promise((resolve,reject)=>{ const i=new Image(); i.onload=()=>resolve(i); i.onerror=reject; i.src=src; }); }
+function roundRect(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function hexToRgba(hex, a=1){ const h = hex.replace('#',''); const bigint = parseInt(h,16); const r=(bigint>>16)&255; const g=(bigint>>8)&255; const b=bigint&255; return `rgba(${r},${g},${b},${a})`; }
+function status(t){ statusEl.innerText = t; }
+
+/* ========== Stickers: add, render, drag ========== */
+function addSticker(emoji){
+  // initial position center (normalized 0..1)
+  const id = Date.now() + Math.random();
+  activeStickers.push({id, emoji, x:0.5, y:0.5, size:120});
+  renderEditorOverlay();
+}
+function renderEditorOverlay(){
+  // show a temporary preview by drawing on canvas transparent then add sticker DOM overlay for dragging
+  // We'll create draggable sticker DOMs over the previewImg element
+  // First remove existing overlays
+  const old = document.querySelectorAll('.sticker-overlay'); old.forEach(e=>e.remove());
+  // If preview has image source (after capture) position overlays relative to previewImg's displayed size
+  const container = previewImg.parentElement;
+  activeStickers.forEach(st=>{
+    const el = document.createElement('div');
+    el.className = 'sticker-overlay';
+    el.style.position='absolute';
+    // compute displayed coordinates
+    // get previewImg bounding rect
+    const rect = previewImg.getBoundingClientRect();
+    // show element as emoji text
+    el.innerText = st.emoji;
+    el.style.fontSize = (st.size * (rect.width / canvas.width)) + 'px';
+    el.style.left = (rect.left + rect.width*st.x - 24) + 'px';
+    el.style.top = (rect.top + rect.height*st.y - 24) + 'px';
+    el.style.zIndex = 9999;
+    el.style.cursor = 'grab';
+    el.style.userSelect = 'none';
+    el.style.padding = '2px';
+    // add to body so it can be dragged
+    document.body.appendChild(el);
+    // enable drag
+    let down = false, startX, startY, initX, initY;
+    el.addEventListener('pointerdown', (ev)=>{ down=true; el.setPointerCapture(ev.pointerId); startX = ev.clientX; startY = ev.clientY; initX = st.x; initY = st.y; el.classList.add('dragging'); });
+    window.addEventListener('pointermove', (ev)=>{ if(!down) return; const dx = ev.clientX - startX; const dy = ev.clientY - startY; const rect = previewImg.getBoundingClientRect(); // update normalized position
+      const nx = initX + dx/rect.width; const ny = initY + dy/rect.height; st.x = Math.min(Math.max(nx,0.05),0.95); st.y = Math.min(Math.max(ny,0.05),0.95);
+      el.style.left = (rect.left + rect.width*st.x - 24) + 'px'; el.style.top = (rect.top + rect.height*st.y - 24) + 'px';
+    });
+    window.addEventListener('pointerup', ()=>{ if(!down) return; down=false; el.classList.remove('dragging'); });
+    // double-click to remove
+    el.addEventListener('dblclick', ()=>{ activeStickers = activeStickers.filter(x=>x.id!==st.id); el.remove(); });
+  });
+}
+
+/* Re-render overlays when window resizes */
+window.addEventListener('resize', ()=>{ renderEditorOverlay(); });
+
+/* ========== Download / copy / print / QR ========== */
+function downloadDataUrl(dataUrl){
+  const a = document.createElement('a'); a.href = dataUrl; a.download = `photobooth-${Date.now()}.png`; a.click();
+}
+async function copyToClipboard(dataUrl){
+  try{
+    // Try copying the binary as a blob (some browsers support)
+    const res = await fetch(dataUrl); const blob = await res.blob();
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+    alert('Image copied to clipboard (if supported by your browser).');
+  }catch(e){
+    // fallback: copy dataURL as text
+    try{ await navigator.clipboard.writeText(dataUrl); alert('Image link copied (as text).'); }catch(e2){ alert('Copy failed. You can use Download instead.'); }
+  }
+}
+function printDataUrl(dataUrl){
+  const w = window.open(''); w.document.write(`<img src="${dataUrl}" style="max-width:100%">`); w.document.close(); w.print();
+}
+function generateQR(dataUrl){
+  // NOTE: data URLs can be long. Chart API has a URL length limit on some browsers.
+  // We'll attempt to use Google's Chart API to generate a QR from the data URL.
+  // If it fails or is too long, user should host the image and use a short link.
+  const encoded = encodeURIComponent(dataUrl);
+  const qrUrl = `https://chart.googleapis.com/chart?cht=qr&chs=300x300&chl=${encoded}&chld=L|1`;
+  qrImg.src = qrUrl;
+  qrArea.style.display='block';
+  alert('QR generated. Scan it with your phone camera (if the QR is too long some scanners may not accept it).');
+}
+
+/* ========== Startup ========== */
+startCamera();
+
+/* Optional: when preview image updates, re-render overlays for sticker dragging when user has saved to preview */
+const observer = new MutationObserver(()=>{ renderEditorOverlay(); });
+observer.observe(previewImg, { attributes:true, attributeFilter:['src'] });
+
+</script>
+</body>
+</html>
